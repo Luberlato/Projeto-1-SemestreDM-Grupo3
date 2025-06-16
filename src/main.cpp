@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <LiquidCrystal_I2C.h>
-#include <Wifi.h>
-#include "internet.h"
+#include <WiFi.h>
+#include "internet.h" // Certifique-se de que essa biblioteca conecta ao Wi-Fi
 #include <ArduinoJson.h>
 #include <PubSubClient.h>
 
@@ -13,99 +13,83 @@ const int mqtt_port = 1883;
 const char *mqtt_id = "trackbox-central";
 const char *mqtt_topic_sub = "trackbox/sensores";
 
-LiquidCrystal_I2C lcd(0x27, 20, 4); // Criando o objeto
+LiquidCrystal_I2C lcd(0x27, 20, 4); // LCD 20x4
 
-bool trava = false;
-long lat;
-long temp;
-long longi;
+bool trava;
+bool movimento;
+bool alerta = 0;
+float lat;
+float temp;
+float longi;
 long timesTemp;
 
-void setup()
-{
-  Serial.begin(9600);
+void callback(char *topic, byte *payload, unsigned int length) {
 
-  // Iniciando o tratamento do LCD
+  String mensagem = "";
+  for (unsigned int i = 0; i < length; i++) {
+    mensagem += (char)payload[i];
+  }
+
+  StaticJsonDocument<256> doc;
+  DeserializationError error = deserializeJson(doc, mensagem);
+  if (error) {
+    Serial.print("Erro ao fazer parse do JSON: ");
+    Serial.println(error.c_str());
+    return;
+  }
+
+  if (!doc["trava"].isNull()) trava = doc["trava"];
+  if (!doc["movimento"].isNull()) movimento = doc["movimento"];
+  if (!doc["alerta"].isNull()) alerta = doc["alerta"];
+  if (!doc["timestamp"].isNull()) timesTemp = doc["timestamp"];
+  if (!doc["latitude"].isNull()) lat = doc["latitude"];
+  if (!doc["longitude"].isNull()) longi = doc["longitude"];
+  if (!doc["temperatura"].isNull()) temp = doc["temperatura"];
+}
+
+void reconnect() {
+  while (!client.connected()) {
+    Serial.print("Tentando conectar ao MQTT...");
+    if (client.connect(mqtt_id)) {
+      Serial.println("Conectado!");
+      client.subscribe(mqtt_topic_sub);
+    } else {
+      Serial.print("Falha, rc=");
+      Serial.print(client.state());
+      Serial.println(" tentando novamente em 5s");
+      delay(5000);
+    }
+  }
+}
+
+void setup() {
+  Serial.begin(9600);
   lcd.init();
   lcd.backlight();
-  lcd.setCursor(0, 0);
-  lcd.print("LAT: ");
-  lcd.setCursor(0, 1);
-  lcd.print("LONG: ");
-  lcd.setCursor(0, 2);
-  lcd.print("TEMP CARGA: ");
-  lcd.setCursor(0, 3);
-  lcd.print("TRAVA: ");
+
+  conectaWiFi(); // Função da sua biblioteca "internet.h"
+
+  client.setServer(mqtt_server, mqtt_port);
+  client.setCallback(callback);
 }
 
-void loop()
-{
-  lcd.setCursor(6, 0);
-  lcd.print(lat);
-  if (trava)
-  {
+void loop() {
+  if (!client.connected()) {
+    reconnect();
+  }
+    client.loop();
     lcd.clear();
     lcd.setCursor(0, 0);
-    lcd.print(" ALERTA!!!");
-    lcd.setCursor(0, 1);
-    lcd.print("Carga furtada");
-    lcd.setCursor(0, 2);
     lcd.print("LAT: ");
-    lcd.setCursor(0, 3);
+    lcd.print(lat, 8);
+    lcd.setCursor(0, 1);
     lcd.print("LONG: ");
-  }
-  else
-  {
-  }
-}
+    lcd.print(longi, 8);
+    lcd.setCursor(0, 2);
+    lcd.print("TEMP CARGA: ");
+    lcd.print(temp);
+    lcd.setCursor(0, 3);
+    lcd.print("TRAVA: ");
+    lcd.print(trava ? "SIM" : "NAO");
 
-void callback(char *topic, byte *payload, unsigned int Lenght)
-{
-   Serial.printf("mensagem recebida em: %s: ", topic);
-  
- String mensagem = "";
-
- for (unsigned int i = 0; i < Lenght; i++)
-
-  {
-      char c = (char)payload[i];
-    mensagem += c;
-    
-  }
-   Serial.println(mensagem);
-
-  //*******************JSON*************** */
-  JsonDocument doc;
-  deserializeJson(doc, mensagem);
-
-  if (!doc["trava"].isNull())
-
-  {
-     trava = doc["trava"];
-    
-  }
-if (!doc["timestamp"].isNull())
-
-  {
-    timesTemp = doc["timestamp"];
-    
-  }
-if (!doc["latitude"].isNull())
-
-  {
-    lat = doc["Latitude"];
-    
-  }
-  if (!doc["longitude"].isNull())
-
-  {
-     longi = doc["longitude"];
-    
-  }
-  if (!doc["temperatura"].isNull())
-
- {
-     temp = doc["temperatura"];
-    
-  }
 }
