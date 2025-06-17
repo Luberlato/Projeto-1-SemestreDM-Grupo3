@@ -5,6 +5,8 @@
 #include <ArduinoJson.h>
 #include <PubSubClient.h>
 
+#define pinBotao 23
+
 WiFiClient espClient;
 PubSubClient client(espClient);
 
@@ -18,10 +20,12 @@ LiquidCrystal_I2C lcd(0x27, 20, 4); // LCD 20x4
 bool trava;
 bool movimento;
 bool alerta = 0;
+bool estadoBotao;
 float lat;
 float temp;
 float longi;
 long timesTemp;
+void alertaLCD();
 
 void callback(char *topic, byte *payload, unsigned int length) {
 
@@ -77,8 +81,9 @@ void loop() {
   if (!client.connected()) {
     reconnect();
   }
+  estadoBotao = digitalRead(pinBotao);
     client.loop();
-    lcd.clear();
+    Serial.println(alerta);
     lcd.setCursor(0, 0);
     lcd.print("LAT: ");
     lcd.print(lat, 8);
@@ -91,5 +96,21 @@ void loop() {
     lcd.setCursor(0, 3);
     lcd.print("TRAVA: ");
     lcd.print(trava ? "SIM" : "NAO");
+    if (alerta){
+      alertaLCD();
+    }
 
+}
+void alertaLCD(){
+  const bool alerta = 1;
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("ALERTA!!!!");
+  lcd.setCursor(0,1);
+  lcd.print("CARGA COMPROMETIDA");
+  delay(1000);
+  if (!estadoBotao){
+    return;
+  }
+  
 }
